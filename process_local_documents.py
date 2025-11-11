@@ -39,9 +39,8 @@ def get_documents_hash():
         print(f"   Formatos permitidos: {', '.join(ALLOWED_EXTENSIONS)}")
         return None
     
-    print(f"\n📁 Archivos encontrados:")
+    print(f"📁 {len(files)} archivo(s) encontrado(s)")
     for file in files:
-        print(f"   • {file.name}")
         with open(file, 'rb') as f:
             content = f.read()
             hash_content += f"{file.name}_{hashlib.md5(content).hexdigest()}"
@@ -50,7 +49,7 @@ def get_documents_hash():
 
 def load_local_documents():
     """Carga y procesa documentos desde la carpeta local"""
-    print("\n🔍 Procesando documentos...")
+    print("🔍 Procesando documentos...")
     
     # Verificar si ya existe en caché
     files_hash = get_documents_hash()
@@ -60,20 +59,17 @@ def load_local_documents():
     cache_path = Path(CACHE_FOLDER) / f"{files_hash}.pkl"
     
     if cache_path.exists():
-        print(f"\n✅ Vectorstore encontrado en caché: {files_hash[:8]}...")
-        print("   No es necesario reprocesar.")
+        print(f"✅ Vectorstore encontrado en caché. No es necesario reprocesar.")
         return True
     
     # Cargar documentos
-    print("\n⚙️  Cargando documentos...")
+    print("⚙️  Cargando documentos...")
     doc_path = Path(DOCUMENTS_FOLDER)
     all_documents = []
     
     for file_path in doc_path.iterdir():
         if file_path.suffix.lower() not in ALLOWED_EXTENSIONS:
             continue
-        
-        print(f"   Procesando: {file_path.name}...")
         
         try:
             if file_path.suffix == '.pdf':
@@ -100,20 +96,19 @@ def load_local_documents():
                     doc.metadata['page_number'] = doc.metadata['page']
             
             all_documents.extend(docs)
-            print(f"      ✓ {len(docs)} documento(s) cargado(s)")
             
         except Exception as e:
-            print(f"      ✗ Error: {str(e)}")
+            print(f"✗ Error en {file_path.name}: {str(e)}")
             continue
     
     if not all_documents:
-        print("\n❌ No se pudieron cargar documentos.")
+        print("❌ No se pudieron cargar documentos.")
         return False
     
-    print(f"\n📄 Total de documentos cargados: {len(all_documents)}")
+    print(f"📄 {len(all_documents)} documento(s) cargado(s)")
     
     # Dividir en chunks
-    print("\n✂️  Dividiendo en chunks...")
+    print("✂️  Dividiendo en chunks...")
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1500,
         chunk_overlap=300,
@@ -122,10 +117,10 @@ def load_local_documents():
     )
     
     chunks = text_splitter.split_documents(all_documents)
-    print(f"   ✓ {len(chunks)} chunks creados")
+    print(f"✓ {len(chunks)} chunks creados")
     
     # Crear embeddings
-    print("\n🧠 Generando embeddings...")
+    print("🧠 Generando embeddings...")
     embeddings_model = HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2",
         model_kwargs={'device': 'cpu'},
@@ -133,11 +128,11 @@ def load_local_documents():
     )
     
     # Crear vectorstore
-    print("   Creando vectorstore (esto puede tardar)...")
+    print("Creando vectorstore...")
     vectorstore = FAISS.from_documents(chunks, embeddings_model)
     
     # Guardar en caché
-    print(f"\n💾 Guardando en caché: {files_hash[:8]}...")
+    print(f"💾 Guardando en caché...")
     os.makedirs(CACHE_FOLDER, exist_ok=True)
     
     with open(cache_path, 'wb') as f:
@@ -148,17 +143,12 @@ def load_local_documents():
             'num_chunks': len(chunks)
         }, f)
     
-    print("\n✅ ¡Documentos procesados exitosamente!")
-    print(f"   • Documentos: {len(all_documents)}")
-    print(f"   • Chunks: {len(chunks)}")
-    print(f"   • Hash: {files_hash[:8]}")
+    print(f"✅ ¡Completado! {len(all_documents)} documentos, {len(chunks)} chunks")
     
     return True
 
 if __name__ == '__main__':
-    print("=" * 60)
-    print("🚀 Procesador de Documentos Locales - RAG System")
-    print("=" * 60)
+    print("\n🚀 Procesador de Documentos Locales - RAG System")
     
     # Crear carpeta documents si no existe
     os.makedirs(DOCUMENTS_FOLDER, exist_ok=True)
@@ -166,12 +156,8 @@ if __name__ == '__main__':
     success = load_local_documents()
     
     if success:
-        print("\n" + "=" * 60)
-        print("✅ Proceso completado. Puedes iniciar el servidor Flask.")
-        print("=" * 60)
+        print("✅ Proceso completado. Puedes iniciar el servidor Flask.\n")
         sys.exit(0)
     else:
-        print("\n" + "=" * 60)
-        print("❌ Error en el procesamiento.")
-        print("=" * 60)
+        print("❌ Error en el procesamiento.\n")
         sys.exit(1)

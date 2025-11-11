@@ -434,36 +434,6 @@
             flex-shrink: 0;
         }
 
-        .voice-btn {
-            background: transparent;
-            color: #dc3545;
-        }
-
-        .voice-btn:hover {
-            background: #fff5f5;
-            transform: scale(1.08);
-        }
-
-        .voice-btn.recording {
-            background: #dc3545;
-            color: white;
-            animation: pulseRecord 1.2s infinite;
-        }
-
-        @keyframes pulseRecord {
-
-            0%,
-            100% {
-                transform: scale(1);
-                box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
-            }
-
-            50% {
-                transform: scale(1.05);
-                box-shadow: 0 0 0 8px rgba(220, 53, 69, 0);
-            }
-        }
-
         .send-btn {
             background: #dc3545;
             color: white;
@@ -477,96 +447,6 @@
         .send-btn:disabled {
             opacity: 0.4;
             cursor: not-allowed;
-        }
-
-        /* Audio Controls */
-        .audio-controls {
-            display: none;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 20px;
-            background: #fff5f5;
-            border: 1px solid #ffc9c9;
-            border-radius: 10px;
-            margin: 12px 28px;
-        }
-
-        .audio-controls.show {
-            display: flex;
-        }
-
-        .audio-progress {
-            flex: 1;
-            height: 6px;
-            background: #ffc9c9;
-            border-radius: 3px;
-            overflow: hidden;
-        }
-
-        .audio-progress-bar {
-            height: 100%;
-            background: #dc3545;
-            width: 0%;
-            transition: width 0.1s linear;
-        }
-
-        .audio-control-btn {
-            background: #dc3545;
-            color: white;
-            border: none;
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-            transition: all 0.2s;
-        }
-
-        .audio-control-btn:hover {
-            background: #c82333;
-            transform: scale(1.05);
-        }
-
-        /* Loading Bar */
-        .loading-bar {
-            display: none;
-            height: 3px;
-            background: #ffc9c9;
-            position: relative;
-            overflow: hidden;
-            margin: 0 28px 12px;
-            border-radius: 2px;
-        }
-
-        .loading-bar.show {
-            display: block;
-        }
-
-        .loading-bar-fill {
-            height: 100%;
-            background: #dc3545;
-            width: 0%;
-            animation: loading 2s ease-in-out infinite;
-        }
-
-        @keyframes loading {
-            0% {
-                width: 0%;
-                margin-left: 0%;
-            }
-
-            50% {
-                width: 50%;
-                margin-left: 25%;
-            }
-
-            100% {
-                width: 0%;
-                margin-left: 100%;
-            }
         }
 
         /* Empty State */
@@ -720,7 +600,7 @@
         <div class="sidebar" style="display: none;">
             <div class="sidebar-header">
                 <h1>Chat RAG</h1>
-                <p>Asistente inteligente con voz</p>
+                <p>Asistente inteligente</p>
             </div>
 
             <div class="sidebar-info">
@@ -737,7 +617,7 @@
                         1. Coloca archivos en <code>documents/</code><br>
                         2. Ejecuta: <code>python process_local_documents.py</code><br>
                         3. Inicia el servidor<br>
-                        4. Haz preguntas por texto o voz
+                        4. Haz preguntas por texto
                     </div>
                 </div>
 
@@ -767,34 +647,13 @@
                 <div class="empty-state">
                     <div class="empty-icon">→</div>
                     <h3>Bienvenido</h3>
-                    <p>Haz preguntas sobre los documentos cargados. Puedes escribir o usar el micrófono.</p>
+                    <p>Haz preguntas sobre los documentos cargados.</p>
                 </div>
-            </div>
-
-            <!-- Loading Bar -->
-            <div class="loading-bar" id="loadingBar">
-                <div class="loading-bar-fill"></div>
-            </div>
-
-            <!-- Audio Controls -->
-            <div class="audio-controls" id="audioControls">
-                <button class="audio-control-btn" id="pauseBtn" title="Pausar/Reanudar">
-                    ⏸
-                </button>
-                <div class="audio-progress">
-                    <div class="audio-progress-bar" id="audioProgressBar"></div>
-                </div>
-                <button class="audio-control-btn" id="stopBtn" title="Detener">
-                    ⏹
-                </button>
             </div>
 
             <div class="chat-input">
                 <div class="input-wrapper">
                     <input type="text" id="userInput" placeholder="Escribe un mensaje..." autocomplete="off">
-                    <button class="input-btn voice-btn" id="voiceBtn" title="Grabar voz">
-                        ●
-                    </button>
                     <button class="input-btn send-btn" id="sendBtn" title="Enviar">
                         →
                     </button>
@@ -814,69 +673,11 @@
 
     <script>
         let uploadedFiles = [];
-        let isRecording = false;
-        let mediaRecorder = null;
-        let audioChunks = [];
-        let currentAudio = null;
-        let audioProgressInterval = null;
 
         // Elementos del DOM
         const chatMessages = document.getElementById('chatMessages');
         const userInput = document.getElementById('userInput');
         const sendBtn = document.getElementById('sendBtn');
-        const voiceBtn = document.getElementById('voiceBtn');
-        const audioControls = document.getElementById('audioControls');
-        const pauseBtn = document.getElementById('pauseBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const audioProgressBar = document.getElementById('audioProgressBar');
-        const loadingBar = document.getElementById('loadingBar');
-
-        // Audio Controls
-        pauseBtn.addEventListener('click', () => {
-            if (currentAudio) {
-                if (currentAudio.paused) {
-                    currentAudio.play();
-                    pauseBtn.textContent = '⏸';
-                } else {
-                    currentAudio.pause();
-                    pauseBtn.textContent = '▶';
-                }
-            }
-        });
-
-        stopBtn.addEventListener('click', () => {
-            if (currentAudio) {
-                currentAudio.pause();
-                currentAudio.currentTime = 0;
-                hideAudioControls();
-            }
-        });
-
-        function showAudioControls() {
-            audioControls.classList.add('show');
-        }
-
-        function hideAudioControls() {
-            audioControls.classList.remove('show');
-            if (audioProgressInterval) {
-                clearInterval(audioProgressInterval);
-            }
-        }
-
-        function updateAudioProgress() {
-            if (currentAudio && currentAudio.duration) {
-                const progress = (currentAudio.currentTime / currentAudio.duration) * 100;
-                audioProgressBar.style.width = progress + '%';
-            }
-        }
-
-        function showLoadingBar() {
-            loadingBar.classList.add('show');
-        }
-
-        function hideLoadingBar() {
-            loadingBar.classList.remove('show');
-        }
 
         // Enviar mensaje
         sendBtn.addEventListener('click', sendMessage);
@@ -906,216 +707,12 @@
 
                 if (data.answer) {
                     addMessage(data.answer, 'bot');
-
-                    // Mostrar barra de carga
-                    showLoadingBar();
-
-                    // Text-to-speech
-                    try {
-                        const ttsResponse = await fetch('/text-to-speech', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ text: data.answer })
-                        });
-
-                        hideLoadingBar();
-
-                        if (ttsResponse.ok) {
-                            const audioBlob = await ttsResponse.blob();
-                            const audioUrl = URL.createObjectURL(audioBlob);
-
-                            // Detener audio anterior
-                            if (currentAudio) {
-                                currentAudio.pause();
-                                currentAudio = null;
-                            }
-
-                            currentAudio = new Audio(audioUrl);
-
-                            // Mostrar controles
-                            showAudioControls();
-                            pauseBtn.textContent = '⏸';
-
-                            audioProgressInterval = setInterval(updateAudioProgress, 100);
-
-                            currentAudio.onended = () => hideAudioControls();
-                            currentAudio.onerror = () => {
-                                hideAudioControls();
-                                hideLoadingBar();
-                            };
-
-                            currentAudio.play();
-                        }
-                    } catch (e) {
-                        hideLoadingBar();
-                        console.log('TTS no disponible');
-                    }
                 } else {
                     addMessage(data.error || 'Error al obtener respuesta', 'bot');
                 }
             } catch (error) {
                 removeTypingIndicator();
                 addMessage('Error de conexión con el servidor', 'bot');
-            }
-        }
-
-        // Grabación de voz
-        voiceBtn.addEventListener('click', toggleRecording);
-
-        async function toggleRecording() {
-            if (!isRecording) {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            sampleRate: 16000,
-                            channelCount: 1,
-                            echoCancellation: true,
-                            noiseSuppression: true,
-                            autoGainControl: true
-                        }
-                    });
-
-                    // Use audio/wav for better compatibility
-                    const options = { mimeType: 'audio/webm;codecs=opus' };
-                    mediaRecorder = new MediaRecorder(stream, options);
-                    audioChunks = [];
-
-                    mediaRecorder.ondataavailable = (e) => {
-                        if (e.data.size > 0) {
-                            audioChunks.push(e.data);
-                        }
-                    };
-
-                    mediaRecorder.onstop = async () => {
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' });
-                        await sendAudioToServer(audioBlob);
-                        stream.getTracks().forEach(track => track.stop());
-                    };
-
-                    mediaRecorder.start(100); // Collect data every 100ms
-                    isRecording = true;
-                    voiceBtn.classList.add('recording');
-                    voiceBtn.textContent = '⏹';
-                    showNotification('info', 'Grabando', 'Habla ahora... (máx 10s)');
-
-                    // Auto-stop después de 10 segundos
-                    setTimeout(() => {
-                        if (isRecording) toggleRecording();
-                    }, 10000);
-
-                } catch (error) {
-                    console.error('Microphone error:', error);
-                    showNotification('error', 'Error', 'No se pudo acceder al micrófono: ' + error.message);
-                }
-            } else {
-                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                    mediaRecorder.stop();
-                }
-                isRecording = false;
-                voiceBtn.classList.remove('recording');
-                voiceBtn.textContent = '●';
-            }
-        }
-
-        async function sendAudioToServer(audioBlob) {
-            if (audioBlob.size === 0) {
-                showNotification('error', 'Error', 'No se grabó audio');
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('audio', audioBlob, 'recording.webm');
-
-            try {
-                clearEmptyState();
-                showTypingIndicator();
-
-                const response = await fetch('/speech-to-text', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.text) {
-                    // Mostrar el mensaje del usuario
-                    addMessage(data.text, 'user');
-                    removeTypingIndicator();
-                    showTypingIndicator();
-
-                    // Enviar pregunta al bot
-                    const askResponse = await fetch('/ask', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ question: data.text })
-                    });
-
-                    const askData = await askResponse.json();
-                    removeTypingIndicator();
-
-                    if (askData.answer) {
-                        // Mostrar respuesta del bot
-                        addMessage(askData.answer, 'bot');
-
-                        // Mostrar barra de carga mientras genera audio
-                        showLoadingBar();
-
-                        // Convertir respuesta a audio y reproducir automáticamente
-                        try {
-                            const ttsResponse = await fetch('/text-to-speech', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ text: askData.answer })
-                            });
-
-                            hideLoadingBar();
-
-                            if (ttsResponse.ok) {
-                                const audioBlob = await ttsResponse.blob();
-                                const audioUrl = URL.createObjectURL(audioBlob);
-
-                                // Detener audio anterior si existe
-                                if (currentAudio) {
-                                    currentAudio.pause();
-                                    currentAudio = null;
-                                }
-
-                                currentAudio = new Audio(audioUrl);
-
-                                // Mostrar controles de audio
-                                showAudioControls();
-                                pauseBtn.textContent = '⏸';
-
-                                // Actualizar barra de progreso
-                                audioProgressInterval = setInterval(updateAudioProgress, 100);
-
-                                // Eventos del audio
-                                currentAudio.onended = () => {
-                                    hideAudioControls();
-                                };
-
-                                currentAudio.onerror = () => {
-                                    hideAudioControls();
-                                    hideLoadingBar();
-                                };
-
-                                currentAudio.play();
-                            }
-                        } catch (e) {
-                            hideLoadingBar();
-                            console.log('TTS no disponible:', e);
-                        }
-                    } else {
-                        addMessage(askData.error || 'Error al obtener respuesta', 'bot');
-                    }
-                } else {
-                    removeTypingIndicator();
-                    showNotification('error', 'Error', data.error || 'No se pudo reconocer el audio');
-                }
-            } catch (error) {
-                removeTypingIndicator();
-                console.error('Speech-to-text error:', error);
-                showNotification('error', 'Error', 'Error al procesar el audio');
             }
         }
 

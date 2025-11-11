@@ -20,9 +20,3 @@ faiss-cpu>=1.7.4
 unstructured>=0.11.0
 transformers>=4.35.0
 sentence-transformers>=2.2.0
-
-# Voice recognition and synthesis
-SpeechRecognition>=3.10.0
-gTTS>=2.4.0
-pyaudio>=0.2.13
-pydub>=0.25.1
