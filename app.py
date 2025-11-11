@@ -587,6 +587,10 @@ if __name__ == '__main__':
     # Cargar documentos locales al inicio
     load_local_documents_on_startup()
     
-    print("✅ Servidor iniciado en http://localhost:5001\n")
+    # Usar puerto de Railway o 5001 por defecto
+    port = int(os.environ.get('PORT', 5001))
+    is_production = os.environ.get('RAILWAY_ENVIRONMENT') is not None
     
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    print(f"✅ Servidor iniciado en puerto {port}\n")
+    
+    app.run(debug=not is_production, host='0.0.0.0', port=port)

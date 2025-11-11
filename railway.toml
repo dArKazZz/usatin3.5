@@ -1,0 +1,2 @@
+# Railway deployment configuration
+PORT = 8080
