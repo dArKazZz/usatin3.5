@@ -587,9 +587,10 @@ if __name__ == '__main__':
     # Cargar documentos locales al inicio
     load_local_documents_on_startup()
     
-    # Usar puerto de Railway o 5001 por defecto
-    port = int(os.environ.get('PORT', 5001))
-    is_production = os.environ.get('RAILWAY_ENVIRONMENT') is not None
+    # Usar puerto según plataforma
+    # Hugging Face Spaces usa 7860, Railway usa PORT, local usa 5001
+    port = int(os.environ.get('PORT', 7860))
+    is_production = os.environ.get('SPACE_ID') is not None or os.environ.get('RAILWAY_ENVIRONMENT') is not None
     
     print(f"✅ Servidor iniciado en puerto {port}\n")
     
