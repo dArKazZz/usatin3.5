@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat RAG</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -330,14 +331,217 @@
 
         .message-text {
             font-size: 15px;
-            line-height: 1.5;
+            line-height: 1.6;
             margin-bottom: 5px;
+        }
+
+        /* Markdown Styles */
+        .message-text table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .message-text table thead {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+        }
+
+        .message-text table th {
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .message-text table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 14px;
+        }
+
+        .message-text table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .message-text table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .message-text strong {
+            font-weight: 700;
+            color: #dc3545;
+        }
+
+        .message-text em {
+            font-style: italic;
+            color: #495057;
+        }
+
+        .message-text code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #e83e8c;
+        }
+
+        .message-text pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 10px 0;
+            border-left: 3px solid #dc3545;
+        }
+
+        .message-text pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+
+        .message-text ul, .message-text ol {
+            margin: 10px 0;
+            padding-left: 25px;
+        }
+
+        .message-text li {
+            margin: 5px 0;
+        }
+
+        .message-text blockquote {
+            border-left: 4px solid #dc3545;
+            padding-left: 15px;
+            margin: 15px 0;
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .message-text h1, .message-text h2, .message-text h3, 
+        .message-text h4, .message-text h5, .message-text h6 {
+            color: #dc3545;
+            margin: 15px 0 10px 0;
+            font-weight: 600;
+        }
+
+        .message-text h1 { font-size: 24px; }
+        .message-text h2 { font-size: 20px; }
+        .message-text h3 { font-size: 18px; }
+        .message-text h4 { font-size: 16px; }
+
+        .message-text a {
+            color: #dc3545;
+            text-decoration: none;
+            border-bottom: 1px solid #dc3545;
+        }
+
+        .message-text a:hover {
+            color: #c82333;
+            border-bottom-color: #c82333;
+        }
+
+        .message-text p {
+            margin: 8px 0;
         }
 
         .message-time {
             font-size: 11px;
             opacity: 0.65;
             text-align: right;
+        }
+
+        /* Sources Styles */
+        .sources-container {
+            margin-top: 15px;
+            padding: 12px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 10px;
+            border-left: 3px solid #dc3545;
+        }
+
+        .sources-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .sources-icon {
+            font-size: 16px;
+        }
+
+        .sources-title {
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .sources-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .source-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 10px;
+            background: white;
+            border-radius: 6px;
+            font-size: 13px;
+            transition: all 0.2s ease;
+            border: 1px solid #dee2e6;
+        }
+
+        .source-item:hover {
+            transform: translateX(3px);
+            border-color: #dc3545;
+            box-shadow: 0 2px 8px rgba(220, 53, 69, 0.1);
+        }
+
+        .source-number {
+            font-weight: 700;
+            color: #dc3545;
+            min-width: 20px;
+        }
+
+        .source-file {
+            flex: 1;
+            color: #212529;
+            font-weight: 500;
+            word-break: break-word;
+        }
+
+        .source-page {
+            color: #6c757d;
+            font-size: 12px;
+            font-style: italic;
+            white-space: nowrap;
+        }
+
+        /* Rephrased Badge */
+        .rephrased-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            cursor: help;
+            box-shadow: 0 2px 4px rgba(23, 162, 184, 0.3);
         }
 
         .typing-indicator {
@@ -706,7 +910,7 @@
                 removeTypingIndicator();
 
                 if (data.answer) {
-                    addMessage(data.answer, 'bot');
+                    addMessage(data.answer, 'bot', data.sources, data.query_rephrased);
                 } else {
                     addMessage(data.error || 'Error al obtener respuesta', 'bot');
                 }
@@ -722,7 +926,7 @@
             if (emptyState) emptyState.remove();
         }
 
-        function addMessage(text, type) {
+        function addMessage(text, type, sources = null, queryRephrased = false) {
             const time = new Date().toLocaleTimeString('es-ES', {
                 hour: '2-digit',
                 minute: '2-digit'
@@ -730,9 +934,52 @@
 
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
+            
+            let sourcesHTML = '';
+            if (sources && sources.length > 0 && type === 'bot') {
+                sourcesHTML = `
+                    <div class="sources-container">
+                        <div class="sources-header">
+                            <span class="sources-icon">📚</span>
+                            <span class="sources-title">Fuentes consultadas</span>
+                        </div>
+                        <div class="sources-list">
+                            ${sources.map((source, index) => `
+                                <div class="source-item">
+                                    <span class="source-number">${index + 1}.</span>
+                                    <span class="source-file">${source.file}</span>
+                                    ${source.page !== 'N/A' ? `<span class="source-page">(pág. ${source.page})</span>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            let rephrasedBadge = '';
+            if (queryRephrased) {
+                rephrasedBadge = '<span class="rephrased-badge" title="Tu pregunta fue reformulada para mejorar la búsqueda">🔄 Reformulada</span>';
+            }
+
+            // Parsear Markdown para mensajes del bot
+            let processedText = text;
+            if (type === 'bot') {
+                // Configurar marked para usar tablas y otras opciones
+                marked.setOptions({
+                    breaks: true,
+                    gfm: true
+                });
+                processedText = marked.parse(text);
+            } else {
+                // Para mensajes del usuario, escapar HTML
+                processedText = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
             messageDiv.innerHTML = `
                 <div class="message-bubble">
-                    <div class="message-text">${text}</div>
+                    ${rephrasedBadge}
+                    <div class="message-text">${processedText}</div>
+                    ${sourcesHTML}
                     <div class="message-time">${time}</div>
                 </div>
             `;

@@ -28,6 +28,10 @@ from langchain_groq import ChatGroq
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import PromptTemplate
+from sentence_transformers import CrossEncoder
+import numpy as np
+from sentence_transformers import CrossEncoder
+import numpy as np
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -48,7 +52,7 @@ if not api_key:
 
 # Setup LLM
 llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-120b",
     groq_api_key=api_key,
     temperature=0.3,
     max_tokens=2048
@@ -58,6 +62,7 @@ llm = ChatGroq(
 vectorstore = None
 embeddings_model = None
 qa_chain = None
+reranker_model = None
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'pdf', 'docx', 'txt', 'csv'}
@@ -105,6 +110,88 @@ def load_local_documents_on_startup():
             print(f"✗ Error al cargar caché: {e}")
     
     print("⚠️  No se encontró caché. Ejecuta: python process_local_documents.py")
+
+def initialize_reranker():
+    """Inicializar modelo de reranking"""
+    global reranker_model
+    if reranker_model is None:
+        try:
+            print("📊 Cargando modelo de reranking...")
+            # Usar un modelo más ligero y rápido
+            reranker_model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', max_length=512)
+            print("✅ Reranker listo")
+        except Exception as e:
+            print(f"⚠️  Error cargando reranker: {e}")
+            print("   Continuando sin reranking...")
+            reranker_model = None
+
+def rerank_documents(query, documents, top_k=5):
+    """Re-ordenar documentos por relevancia usando reranker"""
+    global reranker_model
+    
+    if reranker_model is None or not documents:
+        return documents[:top_k]
+    
+    try:
+        # Crear pares query-document
+        pairs = [[query, doc.page_content[:512]] for doc in documents]  # Limitar a 512 tokens
+        
+        # Obtener scores
+        scores = reranker_model.predict(pairs)
+        
+        # Ordenar por score descendente
+        scored_docs = list(zip(documents, scores))
+        scored_docs.sort(key=lambda x: x[1], reverse=True)
+        
+        # Retornar top_k documentos
+        return [doc for doc, score in scored_docs[:top_k]]
+    except Exception as e:
+        print(f"⚠️  Error en reranking: {e}")
+        return documents[:top_k]
+
+def rephrase_query(original_query):
+    """Reformular la consulta para mejorar la búsqueda"""
+    try:
+        rephrase_prompt = f"""Reformula la siguiente pregunta para que sea más clara y específica, manteniendo el mismo significado. 
+Si la pregunta ya es clara, devuélvela sin cambios.
+
+Pregunta original: {original_query}
+
+Pregunta reformulada (solo devuelve la pregunta, sin explicaciones adicionales):"""
+        
+        response = llm.invoke(rephrase_prompt)
+        rephrased = response.content.strip()
+        
+        # Si la reformulación es muy diferente o muy larga, usar la original
+        if len(rephrased) > len(original_query) * 2 or len(rephrased) < 5:
+            return original_query
+        
+        return rephrased
+    except Exception as e:
+        print(f"⚠️  Error en query rephrasing: {e}")
+        return original_query
+
+def format_citations(documents):
+    """Formatear citas de las fuentes"""
+    citations = []
+    seen = set()
+    
+    for doc in documents:
+        source_file = doc.metadata.get('source_file', 'Desconocido')
+        page = doc.metadata.get('page_number', doc.metadata.get('page', 'N/A'))
+        
+        # Crear identificador único para evitar duplicados
+        citation_id = f"{source_file}_p{page}"
+        
+        if citation_id not in seen:
+            seen.add(citation_id)
+            citations.append({
+                'file': source_file,
+                'page': page,
+                'preview': doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+            })
+    
+    return citations
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -215,6 +302,86 @@ def load_documents(files_data, files_hash):
     
     return vectorstore, None
 
+def initialize_reranker():
+    """Inicializar modelo de reranking"""
+    global reranker_model
+    if reranker_model is None:
+        try:
+            print("📊 Cargando modelo de reranking...")
+            reranker_model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+            print("✅ Reranker listo")
+        except Exception as e:
+            print(f"⚠️  Error cargando reranker: {e}")
+            reranker_model = None
+
+def rerank_documents(query, documents, top_k=5):
+    """Re-ordenar documentos por relevancia usando reranker"""
+    global reranker_model
+    
+    if reranker_model is None or not documents:
+        return documents[:top_k]
+    
+    try:
+        # Crear pares query-document
+        pairs = [[query, doc.page_content] for doc in documents]
+        
+        # Obtener scores
+        scores = reranker_model.predict(pairs)
+        
+        # Ordenar por score descendente
+        scored_docs = list(zip(documents, scores))
+        scored_docs.sort(key=lambda x: x[1], reverse=True)
+        
+        # Retornar top_k documentos
+        return [doc for doc, score in scored_docs[:top_k]]
+    except Exception as e:
+        print(f"Error en reranking: {e}")
+        return documents[:top_k]
+
+def rephrase_query(original_query):
+    """Reformular la consulta para mejorar la búsqueda"""
+    try:
+        rephrase_prompt = f"""Reformula la siguiente pregunta para que sea más clara y específica, manteniendo el mismo significado. 
+        Si la pregunta ya es clara, devuélvela sin cambios.
+        
+        Pregunta original: {original_query}
+        
+        Pregunta reformulada (solo devuelve la pregunta, sin explicaciones adicionales):"""
+        
+        response = llm.invoke(rephrase_prompt)
+        rephrased = response.content.strip()
+        
+        # Si la reformulación es muy diferente o muy larga, usar la original
+        if len(rephrased) > len(original_query) * 2 or len(rephrased) < 5:
+            return original_query
+        
+        return rephrased
+    except Exception as e:
+        print(f"Error en query rephrasing: {e}")
+        return original_query
+
+def format_citations(documents):
+    """Formatear citas de las fuentes"""
+    citations = []
+    seen = set()
+    
+    for doc in documents:
+        source_file = doc.metadata.get('source_file', 'Desconocido')
+        page = doc.metadata.get('page_number', doc.metadata.get('page', 'N/A'))
+        
+        # Crear identificador único para evitar duplicados
+        citation_id = f"{source_file}_p{page}"
+        
+        if citation_id not in seen:
+            seen.add(citation_id)
+            citations.append({
+                'file': source_file,
+                'page': page,
+                'preview': doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+            })
+    
+    return citations
+
 def create_qa_chain(vectorstore):
     """Create QA chain with custom prompt"""
     custom_prompt = PromptTemplate(
@@ -251,7 +418,7 @@ def create_qa_chain(vectorstore):
         chain_type="stuff",
         retriever=vectorstore.as_retriever(
             search_type="similarity",
-            search_kwargs={"k": 10}
+            search_kwargs={"k": 15}  # Aumentado para reranking
         ),
         input_key="question",
         return_source_documents=True,
@@ -315,8 +482,8 @@ def upload_files():
 
 @app.route('/ask', methods=['POST'])
 def ask_question():
-    """Handle question"""
-    global qa_chain
+    """Handle question with reranking, rephrasing and citations"""
+    global qa_chain, vectorstore
     
     if not qa_chain:
         return jsonify({'error': 'Por favor sube documentos primero'}), 400
@@ -328,28 +495,65 @@ def ask_question():
         return jsonify({'error': 'Pregunta vacía'}), 400
     
     try:
-        # Process question
-        response = qa_chain.invoke({"question": question})
-        answer = response.get("result", "No se pudo generar respuesta")
-        source_docs = response.get("source_documents", [])
+        # 1. QUERY REPHRASING - Reformular consulta
+        rephrased_question = rephrase_query(question)
+        use_rephrased = rephrased_question != question
         
-        # Format sources
-        sources = []
-        for doc in source_docs[:5]:
-            sources.append({
-                'file': doc.metadata.get('source_file', 'Desconocido'),
-                'page': doc.metadata.get('page_number', 'N/A'),
-                'chunk': doc.metadata.get('chunk_index', 'N/A'),
-                'preview': doc.page_content[:300] + "..." if len(doc.page_content) > 300 else doc.page_content
-            })
+        # 2. RETRIEVAL - Obtener documentos candidatos
+        search_query = rephrased_question if use_rephrased else question
+        initial_docs = vectorstore.similarity_search(search_query, k=15)
+        
+        # 3. RERANKING - Re-ordenar por relevancia
+        reranked_docs = rerank_documents(question, initial_docs, top_k=5)
+        
+        # 4. GENERATION - Generar respuesta con documentos re-ordenados
+        # Crear contexto con los documentos rerankeados
+        context = "\n\n".join([doc.page_content for doc in reranked_docs])
+        
+        custom_prompt = f"""
+        Eres Usatín, un asistente virtual amable, carismático y servicial de la Universidad USAT.
+        
+        PERSONALIDAD:
+        - Sé cálido, amable y entusiasta
+        - Usa emojis ocasionales para ser más expresivo
+        - Habla de forma natural y cercana
+        - Muestra interés genuino por ayudar
+        - Sé profesional pero no rígido
+        
+        INSTRUCCIONES DE RESPUESTA:
+        1. Responde SOLO usando la información del contexto proporcionado
+        2. Si no encuentras la respuesta, di amablemente: "Lo siento, esa información no está disponible en los documentos. ¿Hay algo más en lo que pueda ayudarte?"
+        3. Si encuentras información parcial, indícalo con empatía
+        4. Mantén las respuestas claras, bien estructuradas y fáciles de entender
+        5. Termina tus respuestas invitando a hacer más preguntas cuando sea apropiado
+
+        Contexto de los documentos:
+        {context}
+
+        Pregunta del usuario:
+        {question}
+        
+        Respuesta (recuerda ser amable y carismático):
+        """
+        
+        response = llm.invoke(custom_prompt)
+        answer = response.content
+        
+        # 5. CITATIONS - Formatear citas de las fuentes
+        citations = format_citations(reranked_docs)
         
         return jsonify({
             'success': True,
             'answer': answer,
-            'sources': sources
+            'sources': citations,
+            'query_rephrased': use_rephrased,
+            'original_query': question if use_rephrased else None,
+            'rephrased_query': rephrased_question if use_rephrased else None
         })
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Error al procesar pregunta: {str(e)}'}), 500
 
 @app.route('/clear-cache', methods=['POST'])
@@ -376,6 +580,9 @@ def status():
 
 if __name__ == '__main__':
     print("\n🚀 Iniciando servidor RAG...")
+    
+    # Inicializar reranker
+    initialize_reranker()
     
     # Cargar documentos locales al inicio
     load_local_documents_on_startup()
