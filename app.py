@@ -1,14 +1,11 @@
-from flask import Flask, render_template, request, jsonify, session, send_file
+from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
-from werkzeug.utils import secure_filename
 import os
 import hashlib
 import pickle
 from datetime import datetime
 from pathlib import Path
-from io import BytesIO
 import tempfile
-import re
 import warnings
 import logging
 
@@ -30,18 +27,12 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import PromptTemplate
 from sentence_transformers import CrossEncoder
 import numpy as np
-from sentence_transformers import CrossEncoder
-import numpy as np
 
 # Initialize Flask app
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'usatin-secret-key-2025'
-app.config['UPLOAD_FOLDER'] = './uploads'
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max
 CORS(app)
 
-# Ensure upload folder exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Ensure folders exist
 os.makedirs('./vectorstore_cache', exist_ok=True)
 os.makedirs('./documents', exist_ok=True)
 
@@ -60,17 +51,14 @@ llm = ChatGroq(
 
 # Global variables
 vectorstore = None
-embeddings_model = None
 qa_chain = None
 reranker_model = None
 
-# Allowed file extensions
-ALLOWED_EXTENSIONS = {'pdf', 'docx', 'txt', 'csv'}
 DOCUMENTS_FOLDER = './documents'
 
 def load_local_documents_on_startup():
     """Carga documentos desde la carpeta local al iniciar el servidor"""
-    global vectorstore, qa_chain, embeddings_model
+    global vectorstore, qa_chain
     
     doc_path = Path(DOCUMENTS_FOLDER)
     if not doc_path.exists():
@@ -117,7 +105,6 @@ def initialize_reranker():
     if reranker_model is None:
         try:
             print("📊 Cargando modelo de reranking...")
-            # Usar un modelo más ligero y rápido
             reranker_model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', max_length=512)
             print("✅ Reranker listo")
         except Exception as e:
@@ -193,200 +180,11 @@ def format_citations(documents):
     
     return citations
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def get_files_hash(files_data):
-    """Generate hash based on file contents"""
-    hash_content = ""
-    for filename, content in files_data.items():
-        hash_content += f"{filename}_{hashlib.md5(content).hexdigest()}"
-    return hashlib.md5(hash_content.encode()).hexdigest()
-
-def load_documents(files_data, files_hash):
-    """Load and process documents"""
-    cache_dir = Path("./vectorstore_cache")
-    cache_path = cache_dir / f"{files_hash}.pkl"
-    
-    # Try to load from cache
-    if cache_path.exists():
-        try:
-            with open(cache_path, "rb") as f:
-                cached_data = pickle.load(f)
-                return cached_data['vectorstore'], None
-        except Exception as e:
-            print(f"Cache load error: {e}")
-    
-    # Process documents
-    loaders = []
-    temp_files = []
-    
-    for filename, content in files_data.items():
-        # Save to temp file
-        suffix = os.path.splitext(filename)[-1]
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-            temp_file.write(content)
-            temp_path = temp_file.name
-            temp_files.append(temp_path)
-        
-        # Create appropriate loader
-        if filename.endswith('.pdf'):
-            loaders.append(PyPDFLoader(temp_path))
-        elif filename.endswith('.txt'):
-            loaders.append(TextLoader(temp_path))
-        elif filename.endswith('.docx'):
-            loaders.append(UnstructuredWordDocumentLoader(temp_path))
-        elif filename.endswith('.csv'):
-            loaders.append(CSVLoader(temp_path))
-    
-    # Load documents
-    documents = []
-    for idx, loader in enumerate(loaders):
-        try:
-            docs = loader.load()
-            for doc_idx, doc in enumerate(docs):
-                doc.metadata['source_file'] = list(files_data.keys())[idx]
-                doc.metadata['file_index'] = idx
-                doc.metadata['doc_index'] = doc_idx
-                doc.metadata['upload_time'] = datetime.now().isoformat()
-                if 'page' in doc.metadata:
-                    doc.metadata['page_number'] = doc.metadata['page'] + 1
-            documents.extend(docs)
-        except Exception as e:
-            print(f"Error loading document: {e}")
-    
-    if not documents:
-        return None, "No documents could be loaded"
-    
-    # Split documents
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1500,
-        chunk_overlap=300,
-        separators=["\n\n", "\n", ". ", "! ", "? ", "; ", ", ", " ", ""],
-        length_function=len,
-    )
-    texts = text_splitter.split_documents(documents)
-    
-    # Add chunk metadata
-    for idx, text in enumerate(texts):
-        text.metadata['chunk_index'] = idx
-        text.metadata['chunk_length'] = len(text.page_content)
-    
-    # Create embeddings
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
-        model_kwargs={'device': 'cpu'},
-        encode_kwargs={'normalize_embeddings': True}
-    )
-    vectorstore = FAISS.from_documents(texts, embeddings)
-    
-    # Save to cache
-    try:
-        cache_data = {
-            'vectorstore': vectorstore,
-            'created_at': datetime.now().isoformat(),
-            'num_docs': len(documents),
-            'num_chunks': len(texts)
-        }
-        with open(cache_path, "wb") as f:
-            pickle.dump(cache_data, f)
-    except Exception as e:
-        print(f"Cache save error: {e}")
-    
-    # Cleanup temp files
-    for temp_file in temp_files:
-        try:
-            os.remove(temp_file)
-        except:
-            pass
-    
-    return vectorstore, None
-
-def initialize_reranker():
-    """Inicializar modelo de reranking"""
-    global reranker_model
-    if reranker_model is None:
-        try:
-            print("📊 Cargando modelo de reranking...")
-            reranker_model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-            print("✅ Reranker listo")
-        except Exception as e:
-            print(f"⚠️  Error cargando reranker: {e}")
-            reranker_model = None
-
-def rerank_documents(query, documents, top_k=5):
-    """Re-ordenar documentos por relevancia usando reranker"""
-    global reranker_model
-    
-    if reranker_model is None or not documents:
-        return documents[:top_k]
-    
-    try:
-        # Crear pares query-document
-        pairs = [[query, doc.page_content] for doc in documents]
-        
-        # Obtener scores
-        scores = reranker_model.predict(pairs)
-        
-        # Ordenar por score descendente
-        scored_docs = list(zip(documents, scores))
-        scored_docs.sort(key=lambda x: x[1], reverse=True)
-        
-        # Retornar top_k documentos
-        return [doc for doc, score in scored_docs[:top_k]]
-    except Exception as e:
-        print(f"Error en reranking: {e}")
-        return documents[:top_k]
-
-def rephrase_query(original_query):
-    """Reformular la consulta para mejorar la búsqueda"""
-    try:
-        rephrase_prompt = f"""Reformula la siguiente pregunta para que sea más clara y específica, manteniendo el mismo significado. 
-        Si la pregunta ya es clara, devuélvela sin cambios.
-        
-        Pregunta original: {original_query}
-        
-        Pregunta reformulada (solo devuelve la pregunta, sin explicaciones adicionales):"""
-        
-        response = llm.invoke(rephrase_prompt)
-        rephrased = response.content.strip()
-        
-        # Si la reformulación es muy diferente o muy larga, usar la original
-        if len(rephrased) > len(original_query) * 2 or len(rephrased) < 5:
-            return original_query
-        
-        return rephrased
-    except Exception as e:
-        print(f"Error en query rephrasing: {e}")
-        return original_query
-
-def format_citations(documents):
-    """Formatear citas de las fuentes"""
-    citations = []
-    seen = set()
-    
-    for doc in documents:
-        source_file = doc.metadata.get('source_file', 'Desconocido')
-        page = doc.metadata.get('page_number', doc.metadata.get('page', 'N/A'))
-        
-        # Crear identificador único para evitar duplicados
-        citation_id = f"{source_file}_p{page}"
-        
-        if citation_id not in seen:
-            seen.add(citation_id)
-            citations.append({
-                'file': source_file,
-                'page': page,
-                'preview': doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
-            })
-    
-    return citations
-
 def create_qa_chain(vectorstore):
     """Create QA chain with custom prompt"""
     custom_prompt = PromptTemplate(
         template="""
-        Eres Usatín, un asistente virtual amable, carismático y servicial de la Universidad USAT.
+        Tu nombre es Usatín, un asistente virtual amable, carismático y servicial de la Universidad USAT.
         
         PERSONALIDAD:
         - Sé cálido, amable y entusiasta
@@ -431,54 +229,6 @@ def create_qa_chain(vectorstore):
 def index():
     """Render main page"""
     return render_template('index.html')
-
-@app.route('/upload', methods=['POST'])
-def upload_files():
-    """Handle file upload"""
-    global vectorstore, qa_chain
-    
-    # Accept both 'files' and 'files[]'
-    if 'files' in request.files:
-        files = request.files.getlist('files')
-    elif 'files[]' in request.files:
-        files = request.files.getlist('files[]')
-    else:
-        return jsonify({'error': 'No files provided'}), 400
-    
-    if not files or files[0].filename == '':
-        return jsonify({'error': 'No files selected'}), 400
-    
-    # Read files into memory
-    files_data = {}
-    for file in files:
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            content = file.read()
-            files_data[filename] = content
-    
-    if not files_data:
-        return jsonify({'error': 'No valid files uploaded'}), 400
-    
-    # Generate hash and load documents
-    files_hash = get_files_hash(files_data)
-    vectorstore, error = load_documents(files_data, files_hash)
-    
-    if error:
-        return jsonify({'error': error}), 500
-    
-    # Create QA chain
-    qa_chain = create_qa_chain(vectorstore)
-    
-    # Store in session
-    session['files_loaded'] = True
-    session['num_files'] = len(files_data)
-    session['file_names'] = list(files_data.keys())
-    
-    return jsonify({
-        'success': True,
-        'message': f'{len(files_data)} archivo(s) procesado(s) correctamente',
-        'files': list(files_data.keys())
-    })
 
 @app.route('/ask', methods=['POST'])
 def ask_question():
@@ -556,28 +306,6 @@ def ask_question():
         traceback.print_exc()
         return jsonify({'error': f'Error al procesar pregunta: {str(e)}'}), 500
 
-@app.route('/clear-cache', methods=['POST'])
-def clear_cache():
-    """Clear vectorstore cache"""
-    try:
-        cache_dir = Path("./vectorstore_cache")
-        if cache_dir.exists():
-            import shutil
-            shutil.rmtree(cache_dir)
-            os.makedirs('./vectorstore_cache', exist_ok=True)
-        return jsonify({'success': True, 'message': 'Caché limpiado'})
-    except Exception as e:
-        return jsonify({'error': f'Error limpiando caché: {str(e)}'}), 500
-
-@app.route('/status', methods=['GET'])
-def status():
-    """Get app status"""
-    return jsonify({
-        'files_loaded': session.get('files_loaded', False),
-        'num_files': session.get('num_files', 0),
-        'file_names': session.get('file_names', [])
-    })
-
 if __name__ == '__main__':
     print("\n🚀 Iniciando servidor RAG...")
     
@@ -587,11 +315,6 @@ if __name__ == '__main__':
     # Cargar documentos locales al inicio
     load_local_documents_on_startup()
     
-    # Usar puerto según plataforma
-    # Hugging Face Spaces usa 7860, Railway usa PORT, local usa 5001
-    port = int(os.environ.get('PORT', 7860))
-    is_production = os.environ.get('SPACE_ID') is not None or os.environ.get('RAILWAY_ENVIRONMENT') is not None
+    print("✅ Servidor iniciado en http://localhost:5001\n")
     
-    print(f"✅ Servidor iniciado en puerto {port}\n")
-    
-    app.run(debug=not is_production, host='0.0.0.0', port=port)
+    app.run(debug=True, host='127.0.0.1', port=5001)
