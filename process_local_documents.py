@@ -93,7 +93,7 @@ def load_local_documents():
                     'chunk_index': i
                 })
                 if 'page' in doc.metadata:
-                    doc.metadata['page_number'] = doc.metadata['page']
+                    doc.metadata['page_number'] = doc.metadata['page'] + 1
             
             all_documents.extend(docs)
             
